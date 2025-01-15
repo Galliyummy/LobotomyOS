@@ -268,7 +268,7 @@ disk_read:
     pop dx
     pop cx
     pop bx
-    pop ax                             ; restore registers modified
+    pop ax
     ret
 
 disk_reset:
@@ -287,7 +287,7 @@ file_kernel_bin:        db 'KERNEL  BIN'
 kernel_cluster:         dw 0
 
 
-;will change later
+;will change later also fun fact this bootloader is 509 bytes out of 512 possible so no more space at all basically
 KERNEL_LOAD_SEGMENT     equ 0x2000
 KERNEL_LOAD_OFFSET      equ 0
 
