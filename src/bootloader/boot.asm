@@ -24,7 +24,7 @@ ebr_drive_number:           db 0
                             db 0
 ebr_signature:              db 29h
 ebr_volume_id:              db 12h, 34h, 56h, 78h
-ebr_volume_label:           db 'LOBOTOMY OS'
+ebr_volume_label:           db 'NANOBYTE OS'
 ebr_system_id:              db 'FAT12   '
 
 start:
@@ -64,16 +64,17 @@ main:
 
     mov ax, 1
     mov cl, 1
-    mov bx 0x7E00
+    mov bx, 0x7E00
     call disk_read
 
     mov si, msg_hello
     call puts
 
+    cli
     hlt
 
 floppy_error:
-    mov si, msg_hello
+    mov si, msg_read_failed
     call puts
     jmp wait_key_and_reboot
 
@@ -119,7 +120,7 @@ disk_read:
     push cx
     call lba_to_chs
     pop ax
-
+    
     mov ah, 02h
     mov di, 3
 
@@ -131,9 +132,9 @@ disk_read:
 
     popa
     call disk_reset
-    
+
     dec di
-    test di,di
+    test di, di
     jnz .retry
 
 .fail:
@@ -141,12 +142,11 @@ disk_read:
 
 .done:
     popa
-
-    push di
-    push dx
-    push cx
-    push bx
-    push ax
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
 disk_reset:
@@ -158,8 +158,8 @@ disk_reset:
     popa
     ret
 
-msg_hello:              db 'wsg from bootloader', ENDL, 0
-msg_read_failed:        db 'your disc is buggin', ENDL, 0
+msg_hello:              db 'wsg from boot', ENDL, 0
+msg_read_failed:        db 'your drive buggin', ENDL, 0
 
 times 510-($-$$) db 0
 dw 0AA55h
