@@ -28,7 +28,162 @@ ebr_volume_label:           db 'LOBOTOMY OS'
 ebr_system_id:              db 'FAT12   '
 
 start:
-    jmp main
+    mov ax, 0
+    mov ds, ax
+    mov es, ax
+    
+    mov ss, ax
+    mov sp, 0x7C00
+
+    push es
+    push word .after
+    retf
+
+.after:
+    mov [ebr_drive_number], dl
+
+    mov si, msg_loading
+    call puts
+
+    push es
+    mov ah, 08h
+    int 13h
+    jc floppy_error
+    pop es
+
+    and cl, 0x3F
+    xor ch, ch
+    mov [bdb_sectors_per_track], cx
+
+    inc dh
+    mov [bdb_heads], dh
+
+    ;this is actually ok to hardcode so its lit
+    mov ax, [bdb_sectors_per_fat]
+    mov bl, [bdb_fat_count]
+    xor bh, bh
+    mul bx
+    add ax, [bdb_reserved_sectors]
+    push ax
+
+    mov ax, [bdb_dir_entries_count]
+    shl ax, 5
+    xor dx, dx
+    div word [bdb_bytes_per_sector]
+
+    test dx, dx
+    jz .root_dir_after
+    inc ax
+
+.root_dir_after:
+    mov cl, al 
+    pop ax
+    mov dl, [ebr_drive_number]
+    mov bx, buffer
+    call disk_read
+
+    xor bx, bx
+    mov di, buffer
+
+.search_kernel:
+    mov si, file_kernel_bin
+    mov cx, 11
+    push di
+    repe cmpsb
+    pop di
+    je .found_kernel
+
+    add di, 32
+    inc bx
+    cmp bx, [bdb_dir_entries_count]
+    jl .search_kernel
+
+    jmp kernel_not_found_error
+
+.found_kernel:
+    mov ax, [di + 26]
+    mov [kernel_cluster], ax
+
+    mov ax, [bdb_reserved_sectors]
+    mov bx, buffer
+    mov cl, [bdb_sectors_per_fat]
+    mov dl, [ebr_drive_number]
+    call disk_read
+
+    mov bx, KERNEL_LOAD_SEGMENT
+    mov es, bx
+    mov bx, KERNEL_LOAD_OFFSET
+
+.load_kernel_loop:
+    mov ax, [kernel_cluster]
+    
+    ;lowk had to hardcode here idk how else atm
+    add ax, 31
+    mov cl, 1
+    mov dl, [ebr_drive_number]
+    call disk_read
+
+    add bx, [bdb_bytes_per_sector]
+
+    mov ax, [kernel_cluster]
+    mov cx, 3
+    mul cx
+    mov cx, 2
+    div cx
+
+    mov si, buffer
+    add si, ax
+    mov ax, [ds:si]
+
+    or dx, dx
+    jz .even
+
+.odd:
+    shr ax, 4
+    jmp .next_cluster_after
+
+.even:
+    and ax, 0x0FFF
+
+.next_cluster_after:
+    cmp ax, 0x0FF8
+    jae .read_finish
+
+    mov [kernel_cluster], ax
+    jmp .load_kernel_loop
+
+.read_finish:
+    mov dl, [ebr_drive_number]
+
+    mov ax, KERNEL_LOAD_SEGMENT
+    mov ds, ax
+    mov es, ax
+
+    jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
+
+    jmp wait_key_and_reboot
+
+    cli
+    hlt
+
+floppy_error:
+    mov si, msg_read_failed
+    call puts
+    jmp wait_key_and_reboot
+
+kernel_not_found_error:
+    mov si, msg_kernel_not_found
+    call puts
+    jmp wait_key_and_reboot
+
+wait_key_and_reboot:
+    mov ah, 0
+    int 16h
+    jmp 0FFFFh:0
+
+.halt:
+    cli
+    hlt
 
 puts:
     push si
@@ -51,41 +206,6 @@ puts:
     pop ax
     pop si    
     ret
-    
-main:
-    mov ax, 0
-    mov ds, ax
-    mov es, ax
-    
-    mov ss, ax
-    mov sp, 0x7C00
-
-    mov [ebr_drive_number], dl
-
-    mov ax, 1
-    mov cl, 1
-    mov bx, 0x7E00
-    call disk_read
-
-    mov si, msg_hello
-    call puts
-
-    cli
-    hlt
-
-floppy_error:
-    mov si, msg_read_failed
-    call puts
-    jmp wait_key_and_reboot
-
-wait_key_and_reboot:
-    mov ah, 0
-    int 16h
-    jmp 0FFFFh:0
-
-.halt:
-    cli
-    hlt
 
 lba_to_chs:
     push ax
@@ -111,6 +231,7 @@ lba_to_chs:
     ret
 
 disk_read:
+
     push ax
     push bx
     push cx
@@ -142,11 +263,12 @@ disk_read:
 
 .done:
     popa
+
     pop di
     pop dx
     pop cx
     pop bx
-    pop ax
+    pop ax                             ; restore registers modified
     ret
 
 disk_reset:
@@ -158,8 +280,18 @@ disk_reset:
     popa
     ret
 
-msg_hello:              db 'wsg from boot', ENDL, 0
+msg_loading:            db 'loading from boot wsg', ENDL, 0
 msg_read_failed:        db 'your drive buggin', ENDL, 0
+msg_kernel_not_found:   db 'KERNEL.BIN not found', ENDL, 0
+file_kernel_bin:        db 'KERNEL  BIN'
+kernel_cluster:         dw 0
+
+
+;will change later
+KERNEL_LOAD_SEGMENT     equ 0x2000
+KERNEL_LOAD_OFFSET      equ 0
 
 times 510-($-$$) db 0
 dw 0AA55h
+
+buffer:
