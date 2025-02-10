@@ -67,7 +67,7 @@ start:
     push ax
 
     mov ax, [bdb_dir_entries_count]
-    shl ax, 5
+    shl ax, 5 
     xor dx, dx
     div word [bdb_bytes_per_sector]
 
@@ -76,7 +76,7 @@ start:
     inc ax
 
 .root_dir_after:
-    mov cl, al 
+    mov cl, al
     pop ax
     mov dl, [ebr_drive_number]
     mov bx, buffer
@@ -86,7 +86,7 @@ start:
     mov di, buffer
 
 .search_kernel:
-    mov si, file_kernel_bin
+    mov si, file_stage2_bin
     mov cx, 11
     push di
     repe cmpsb
@@ -98,11 +98,12 @@ start:
     cmp bx, [bdb_dir_entries_count]
     jl .search_kernel
 
+
     jmp kernel_not_found_error
 
 .found_kernel:
     mov ax, [di + 26]
-    mov [kernel_cluster], ax
+    mov [stage2_cluster], ax
 
     mov ax, [bdb_reserved_sectors]
     mov bx, buffer
@@ -115,7 +116,7 @@ start:
     mov bx, KERNEL_LOAD_OFFSET
 
 .load_kernel_loop:
-    mov ax, [kernel_cluster]
+    mov ax, [stage2_cluster]
     
     ;lowk had to hardcode here idk how else atm
     add ax, 31
@@ -125,7 +126,7 @@ start:
 
     add bx, [bdb_bytes_per_sector]
 
-    mov ax, [kernel_cluster]
+    mov ax, [stage2_cluster]
     mov cx, 3
     mul cx
     mov cx, 2
@@ -149,10 +150,11 @@ start:
     cmp ax, 0x0FF8
     jae .read_finish
 
-    mov [kernel_cluster], ax
+    mov [stage2_cluster], ax
     jmp .load_kernel_loop
 
 .read_finish:
+    
     mov dl, [ebr_drive_number]
 
     mov ax, KERNEL_LOAD_SEGMENT
@@ -172,7 +174,7 @@ floppy_error:
     jmp wait_key_and_reboot
 
 kernel_not_found_error:
-    mov si, msg_kernel_not_found
+    mov si, msg_stage2_not_found
     call puts
     jmp wait_key_and_reboot
 
@@ -282,10 +284,9 @@ disk_reset:
 
 msg_loading:            db 'loading from boot wsg', ENDL, 0
 msg_read_failed:        db 'your drive buggin', ENDL, 0
-msg_kernel_not_found:   db 'KERNEL.BIN not found', ENDL, 0
-file_kernel_bin:        db 'KERNEL  BIN'
-kernel_cluster:         dw 0
-
+msg_stage2_not_found:   db 'STAGE2.BIN not found', ENDL, 0
+file_stage2_bin:        db 'STAGE2  BIN'
+stage2_cluster:         dw 0
 
 ;will change later also fun fact this bootloader is 509 bytes out of 512 possible so no more space at all basically
 KERNEL_LOAD_SEGMENT     equ 0x2000
